@@ -153,3 +153,109 @@ filed added
 
 # Question: Was their any conflicts that needed to be resolved ?
 no their wasn't any error , when i change the name of content type in the first feature module in production env (blog -> blog_edit) then i add new field in the developement enviroment (new_field) , then i enable the last one in the prod env it works normally and in the ui it add the new field that add in the developement env, and also it reset the name of the changed one in the production to blog
+
+
+
+
+
+
+
+
+Step 1: Create new Module: 
+```yml
+name: My Api
+type: module
+description: 'A simple custom api for Drupal.'
+core_version_requirement: ^10 || ^9
+package: Custom
+dependencies: []
+```
+Step 2: Create the Route
+We started by defining a new route in our custom module. This route will be accessible at /api/articles and will return a JSON response containing the titles of three specific articles. The route is defined in the custom_api.routing.yml file:
+```yml
+my_api.articles:
+  path: '/api/articles'
+  defaults:
+    _controller: '\Drupal\my_api\Controller\ArticlesController::getArticles'
+    _title: 'Articles API'
+  methods: [GET]
+  requirements:
+    _permission: 'access content'
+```
+This route maps to a controller method called getArticles in our ArticlesController class.
+
+Step 3 : Create Nodes
+we use the drush command 
+
+./vendor/bin/drush php:eval "\Drupal\node\Entity\Node::create(['type' => 'article', 'title' => 'Article 7', 'nid' => 7])->save();"
+
+
+<img width="1440" alt="image" src="https://github.com/user-attachments/assets/abfa069f-78fb-42ef-8352-f28f99433c35" />
+
+
+Step 4: Implement the Controller
+In the controller, we’re using entityQuery to load three specific nodes with hardcoded IDs: 10, 223, and 45. Here’s the simplified version of the controller:
+```php
+<?php
+
+namespace Drupal\my_api\Controller;
+
+use Symfony\Component\HttpFoundation\JsonResponse;
+
+class ArticlesController extends ControllerBase {
+    public function getArticles(){
+        $nids = [10, 223, 45];
+
+        // fetch nodes using entityQuery
+        $node_storage = $this->entityTypeManager()->getStorage("node");
+        $nodes = $node_storage->loadMultiple($nids);
+
+        // response 
+        $data = [];
+        foreach( $nodes as $node){
+            $data[] = [
+                'nid' => $node->id(),
+                'title' => $node->title(),
+            ];
+        }
+
+        return new JsonResponse($data);
+    }
+
+}
+```
+Step 5: Test the Endpoint
+
+We tested the /api/articles endpoint by visiting it in the browser. The response was a JSON array containing the nid and title of the three hardcoded nodes:
+
+<img width="1025" alt="image" src="https://github.com/user-attachments/assets/f3a58b05-9610-4003-b373-70b692be8b11" />
+
+
+set max age 
+```php
+// Create a cacheable JSON response.
+   $response = new CacheableJsonResponse($data);
+
+  // Set cache metadata.
+  $cache_metadata = new CacheableMetadata();
+  $cache_metadata->setCacheMaxAge(3600);
+  $cache_metadata->addCacheContexts(['url']);
+  // Attach cache metadata to the response.
+  $response->addCacheableDependency($cache_metadata);
+  
+  return $response;
+```
+<img width="1028" alt="image" src="https://github.com/user-attachments/assets/fdfb4198-935b-4c9b-af21-b8bd59917e77" />
+not updated 
+<img width="1028" alt="image" src="https://github.com/user-attachments/assets/9efc3ddf-025d-4860-8f34-32dc5cdbb740" />
+With max-age, the response is cached for a set time (e.g., 1 hour). Even if we update the article’s title, the cached response will still be served until the cache expires.
+cache tag 
+```php
+   $cache_metadata->addCacheTags(['node_list']);
+```
+<img width="1037" alt="image" src="https://github.com/user-attachments/assets/9d33130c-744a-4db5-b4d4-b41f052a9545" />
+updated
+<img width="1028" alt="image" src="https://github.com/user-attachments/assets/5acf4f9a-b354-4bb2-a9e0-48470e9edc3f" />
+By adding cache tags, the cache is invalidated automatically when content changes (like updating an article’s title), allowing the updated data to be shown immediately without waiting for the cache to expire.
+
+
